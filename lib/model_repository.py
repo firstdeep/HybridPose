@@ -91,7 +91,8 @@ class Resnet18_8s(nn.Module):
         x = self.convraw(torch.cat([fm, image], 1))
 
         sym_cor_pred = x[:, :2]
-        mask_pred = F.sigmoid(x[:, 2:3])
+        #mask_pred = F.sigmoid(x[:, 2:3])
+        mask_pred = torch.sigmoid(x[:, 2:3])
         pts2d_map_pred = x[:, 3:-(self.num_edges*2)]
         graph_pred = x[:, -self.num_edges*2:]
 

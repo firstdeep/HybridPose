@@ -8,8 +8,8 @@ import pdb
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='linemod', choices=['linemod', 'occlusion_linemod'])
-    parser.add_argument('--object_name', type=str, default='cat')
-    parser.add_argument('--prediction_file', type=str, default='output/linemod/test_set_cat.npy')
+    parser.add_argument('--object_name', type=str, default='ape')
+    parser.add_argument('--prediction_file', type=str, default='output/linemod/test_set_ape.npy')
     args = parser.parse_args()
     return args
 
@@ -84,7 +84,7 @@ if __name__ == '__main__':
                                (record['R_pred'], record['t_pred']))
     print('ADD(-S) score of final prediction is: {}'.format(score_pred))
 
-    # R_err, t_err = compute_pose_error(diameter,
-    #                                  (record['R_gt'], record['t_gt']),
-    #                                  (record['R_pred'], record['t_pred']))
-    # print(args.object_name + 'prediction rotation error is: {}, translation error is : {}'.format(R_err, t_err))
+    R_err, t_err = compute_pose_error(diameter,
+                                     (record['R_gt'], record['t_gt']),
+                                     (record['R_pred'], record['t_pred']))
+    print(args.object_name + 'prediction rotation error is: {}, translation error is : {}'.format(R_err, t_err))

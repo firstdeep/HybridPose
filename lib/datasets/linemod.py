@@ -167,6 +167,7 @@ class LinemodDataset(Dataset):
 
     def __getitem__(self, idx):
         local_idx = idx
+        local_idx = 4
         for object_name in self.object_names:
             if local_idx < self.lengths[object_name]:
                 # image
