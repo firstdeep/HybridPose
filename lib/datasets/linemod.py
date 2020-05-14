@@ -1,3 +1,4 @@
+
 import PIL.Image
 from torchvision import transforms
 import torch
@@ -7,35 +8,44 @@ import os
 import random
 from torch.utils.data import Dataset
 import pdb
+import yaml
 
 cuda = torch.cuda.is_available()
 
+
 class LinemodDataset(Dataset):
     def __init__(self,
-                 base_dir='data/linemod',
+                 base_dir='data/tless',
                  object_name='all'):
+        ##################################################################################
         self.camera_intrinsic = {'fu': 572.41140, 'fv': 573.57043,
                                  'uc': 325.26110, 'vc': 242.04899}
         self.K = np.matrix([[self.camera_intrinsic['fu'], 0, self.camera_intrinsic['uc']],
                             [0, self.camera_intrinsic['fv'], self.camera_intrinsic['vc']],
                             [0, 0, 1]], dtype=np.float32)
-        self.img_shape = (480, 640) # (h, w)
+        ##################################################################################
+        # TODO image shape edit 필요. --> 나중에 crop and resize 시 문제발생원인.
+        self.img_shape = (400, 400)  # (h, w)
+        ##################################################################################
         self.base_dir = base_dir
         linemod_objects = ['ape', 'benchviseblue', 'bowl', 'cam', 'can', 'cat',
                            'cup', 'driller', 'duck', 'eggbox', 'glue', 'holepuncher',
-                           'iron', 'lamp', 'phone']
+                           'iron', 'lamp', 'phone', 'tless_09']
         if object_name == 'all':
             self.object_names = linemod_objects
         elif object_name in linemod_objects:
             self.object_names = [object_name]
         else:
             raise ValueError('Invalid object name: {}'.format(object_name))
+        # load G.T
+        self.info = yaml.load(open(os.path.join(base_dir, object_name, "info.yml"), 'r'), Loader=yaml.FullLoader)
+        self.gt = yaml.load(open(os.path.join(base_dir, object_name, 'gt.yml'), 'r'), Loader=yaml.FullLoader)
+
         # compute length
         self.lengths = {}
         self.total_length = 0
         for object_name in self.object_names:
-            length = len(list(filter(lambda x: x.endswith('jpg'),
-                                     os.listdir(os.path.join(base_dir, 'original_dataset',object_name, 'data')))))
+            length = 1296
             self.lengths[object_name] = length
             self.total_length += length
         # pre-load data into memory
@@ -45,28 +55,32 @@ class LinemodDataset(Dataset):
         self.normals = {}
         for object_name in self.object_names:
             # keypoints
-            pts2d_name = os.path.join(self.base_dir, 'keypoints',
-                                      object_name, 'keypoints_2d.npy')
+            pts2d_name = os.path.join(self.base_dir, object_name, 'keypoints_2d.npy')
             pts2d = np.float32(np.load(pts2d_name))
             self.pts2d[object_name] = pts2d
-            pts3d_name = os.path.join(self.base_dir, 'keypoints',
-                                      object_name, 'keypoints_3d.npy')
-            pts3d = np.float32(np.load(pts3d_name))
+
+            pts3d_name = np.loadtxt(
+                os.path.join('/home/hwanglab/PycharmProjects/clean-pvnet-custom/data/tless', 'farthest',
+                             'farthest_{:02}.txt'.format(int(object_name[-1]))))
+
+            pts3d = np.float32(pts3d_name)
             self.pts3d[object_name] = pts3d
-            # alignment translation: useful to correct pose labels
-            orig_mesh_name = os.path.join(self.base_dir, 'original_dataset',
-                                          object_name, 'mesh.ply')
+
+            # # alignment translation: useful to correct pose labels
+            orig_mesh_name = os.path.join(self.base_dir, object_name, 'mesh.ply')
             orig_point_cloud = self.read_3d_points(orig_mesh_name)
-            blender_mesh_name = os.path.join(self.base_dir, 'blender_meshes',
-                                             object_name, 'object_mesh.ply')
-            blender_point_cloud = self.read_3d_points(blender_mesh_name)
-            alignment_translation = \
-                    self.get_alignment_translation(orig_point_cloud, blender_point_cloud)
-            self.alignment_translation[object_name] = alignment_translation
+            # blender_mesh_name = os.path.join(self.base_dir, 'blender_meshes',
+            #                                  object_name, 'object_mesh.ply')
+            # blender_point_cloud = self.read_3d_points(blender_mesh_name)
+            # alignment_translation = \
+            #         self.get_alignment_translation(orig_point_cloud, blender_point_cloud)
+            # self.alignment_translation[object_name] = alignment_translation
+
             # symmetry plane normals
-            normal_name = os.path.join(self.base_dir, 'symmetries',
-                                       object_name, 'symmetries.txt')
+            normal_name = os.path.join(self.base_dir, object_name, 'symmetries.txt')
             self.normals[object_name] = self.read_normal(normal_name)
+            print("Data init finish")
+            print("keep going...\n")
 
     def read_3d_points(self, filename):
         with open(filename) as f:
@@ -80,8 +94,8 @@ class LinemodDataset(Dataset):
                                        [float(vertex[1])],
                                        [float(vertex[2])]], dtype=np.float32)
                     if in_mm:
-                        vertex = vertex / np.float32(10) # mm -> cm
-                    vertex = vertex / np.float32(100) # cm -> m
+                        vertex = vertex / np.float32(10)  # mm -> cm
+                    vertex = vertex / np.float32(100)  # cm -> m
                     vertices.append(vertex)
                     if len(vertices) >= vertex_count:
                         break
@@ -118,7 +132,7 @@ class LinemodDataset(Dataset):
             for line in f:
                 T.append([line.split()[0]])
             T = np.array(T, dtype=np.float32)
-            T = T / np.float32(100) # cm -> m
+            T = T / np.float32(100)  # cm -> m
         return T
 
     def read_normal(self, filename):
@@ -126,7 +140,6 @@ class LinemodDataset(Dataset):
             lines = f.readlines()
             normal = np.array(lines[3].strip().split(), dtype=np.float32)
         return normal
-
 
     def keypoints_to_map(self, mask, pts2d, unit_vectors=True):
         # based on: https://github.com/zju3dv/pvnet/blob/master/lib/datasets/linemod_dataset.py
@@ -167,56 +180,53 @@ class LinemodDataset(Dataset):
 
     def __getitem__(self, idx):
         local_idx = idx
-        local_idx = 4
+        # print("Dataloader start: index {:d}".format(local_idx))
         for object_name in self.object_names:
             if local_idx < self.lengths[object_name]:
                 # image
-                image_name = os.path.join(self.base_dir, 'original_dataset',
-                                          object_name, 'data',
-                                          'color{}.jpg'.format(local_idx))
+                image_name = os.path.join(self.base_dir, object_name, 'rgb', '{:04d}.png'.format(local_idx))
                 image = transforms.ToTensor()(PIL.Image.open(image_name).convert('RGB'))
+
+                # mask
+                mask_name = os.path.join(self.base_dir, object_name, 'mask', '{:d}.png'.format(local_idx))
+                mask = transforms.ToTensor()(PIL.Image.open(mask_name).convert('L'))
+
                 # keypoints
                 pts2d = self.pts2d[object_name][local_idx]
                 pts3d = self.pts3d[object_name]
+
                 # pose
-                R_name = os.path.join(self.base_dir, 'original_dataset', object_name,
-                                      'data', 'rot{}.rot'.format(local_idx))
-                R = self.read_rotation(R_name)
-                t_name = os.path.join(self.base_dir, 'original_dataset', object_name,
-                                      'data', 'tra{}.tra'.format(local_idx))
-                t = self.read_translation(t_name)
-                t = t - self.alignment_translation[object_name]
+                R = np.array(self.gt[local_idx][0]['cam_R_m2c'], dtype=np.float32).reshape(3, 3)
+                t = np.array(self.gt[local_idx][0]['cam_t_m2c'], dtype=np.float32) * 0.001
+
                 # symmetry correspondences
-                sym_cor_name = os.path.join(self.base_dir, 'correspondences',
-                                            object_name, 'cor{}.npy'.format(local_idx))
+                sym_cor_name = os.path.join(self.base_dir, object_name, 'cor', '{:d}.npy'.format(local_idx))
                 sym_cor = np.float32(np.load(sym_cor_name)).transpose([2, 0, 1])
                 normal = self.normals[object_name]
-                # mask
-                mask_name = os.path.join(self.base_dir, 'masks',
-                                         object_name, 'mask{}.png'.format(local_idx))
-                mask = transforms.ToTensor()(PIL.Image.open(mask_name).convert('L'))
+
                 # keypoint map
                 pts2d_map = self.keypoints_to_map(mask.numpy(), pts2d)
                 # graph
                 graph = self.keypoints_to_graph(mask.numpy(), pts2d)
                 return {
-                        'object_name': object_name,
-                        'local_idx': local_idx,
-                        'image_name': image_name,
-                        'image': image,
-                        'pts2d': pts2d,
-                        'pts2d_map': pts2d_map,
-                        'pts3d': pts3d,
-                        'R': R,
-                        't': t,
-                        'sym_cor': sym_cor,
-                        'normal': normal,
-                        'mask': mask,
-                        'graph': graph
-                        }
+                    'object_name': object_name,
+                    'local_idx': local_idx,
+                    'image_name': image_name,
+                    'image': image,
+                    'pts2d': pts2d,
+                    'pts2d_map': pts2d_map,
+                    'pts3d': pts3d,
+                    'R': R,
+                    't': t,
+                    'sym_cor': sym_cor,
+                    'normal': normal,
+                    'mask': mask,
+                    'graph': graph
+                }
             else:
                 local_idx -= self.lengths[object_name]
         raise ValueError('Invalid index: {}'.format(idx))
+
 
 if __name__ == '__main__':
     ape_dataset = LinemodDataset(object_name='ape')

@@ -17,19 +17,19 @@ cuda = torch.cuda.is_available()
 def parse_args():
     parser = argparse.ArgumentParser()
     # training
-    parser.add_argument('--batch_size', type=int, default=6)
+    parser.add_argument('--batch_size', type=int, default=8)
     parser.add_argument('--n_epochs', type=int, default=600)
     parser.add_argument('--lr', type=float, default=0.02)
     parser.add_argument('--lambda_sym_cor', type=float, default=0.1)
     parser.add_argument('--lambda_mask', type=float, default=1.0)
     parser.add_argument('--lambda_pts2d', type=float, default=10.0)
     parser.add_argument('--lambda_graph', type=float, default=0.1)
-    parser.add_argument('--object_name', type=str, default='ape')
+    parser.add_argument('--object_name', type=str, default='tless_09')
     parser.add_argument('--dataset', type=str, default='linemod', choices=['linemod', 'occlusion_linemod'])
-    parser.add_argument('--save_dir', type=str, default='saved_weights/linemod/ape')
-    parser.add_argument('--load_dir', type=str, default='saved_weights/linemod/ape/checkpoints/0.02/499')
-    parser.add_argument('--test_every', type=int, default=20)
-    parser.add_argument('--save_every', type=int, default=20)
+    parser.add_argument('--save_dir', type=str, default='saved_weights/linemod/tless_09')
+    # parser.add_argument('--load_dir', type=str, default=None)
+    parser.add_argument('--test_every', type=int, default=1)
+    parser.add_argument('--save_every', type=int, default=1)
     parser.add_argument('--num_keypoints', type=int, default=8)
     parser.add_argument('--use_keypoint', type=int, default=1, help='boolean flag indicating whether keypoints are used in pose regression')
     parser.add_argument('--use_edge', type=int, default=1, help='boolean flag indicating whether edge are used in pose regression')
@@ -47,7 +47,7 @@ def initialize(args):
 
 def setup_loaders(args):
     if args.dataset == 'linemod':
-        full_set = LinemodDataset(object_name=args.object_name)
+        full_set = LinemodDataset(object_name=args.object_name) # lib - datasets - linemod.py
     elif args.dataset == 'occlusion_linemod':
         full_set = OcclusionLinemodDataset(object_name=args.object_name)
     else:
@@ -69,10 +69,7 @@ def setup_model(args):
         model = nn.DataParallel(model).cuda()
     print("number of model parameters:", sum([np.prod(p.size()) for p in model.parameters()]))
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    if args.load_dir is not None:
-        model, optimizer, start_epoch = load_session(model, optimizer, args)
-    else:
-        start_epoch = 0
+    start_epoch = 0
     return model, optimizer, start_epoch
 
 def adjust_lr(optimizer, lr):
@@ -91,15 +88,21 @@ if __name__ == '__main__':
                           test_loader,
                           args)
     for epoch in range(start_epoch, args.n_epochs):
+        ###################
+        # trainer.test(epoch)
+        ###################
         trainer.train(epoch)
-        if (epoch + 1) % args.test_every == 0:
-            trainer.test(epoch)
+
         if (epoch + 1) % args.save_every == 0:
             trainer.save_model(epoch)
             os.system('rm -r {}'.format(os.path.join(args.save_dir,
                                                      'checkpoints',
                                                      str(args.lr),
                                                      str(epoch - args.save_every))))
+        if (epoch + 1) % args.test_every == 0:
+            trainer.test(epoch)
+
         if epoch == 200:
             adjust_lr(optimizer, args.lr / 10)
-    trainer.generate_data()
+
+    # trainer.generate_data()

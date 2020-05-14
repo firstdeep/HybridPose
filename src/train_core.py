@@ -18,7 +18,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     # training
     parser.add_argument('--batch_size', type=int, default=6)
-    parser.add_argument('--n_epochs', type=int, default=500)
+    parser.add_argument('--n_epochs', type=int, default=600)
     parser.add_argument('--lr', type=float, default=0.02)
     parser.add_argument('--lambda_sym_cor', type=float, default=0.1)
     parser.add_argument('--lambda_mask', type=float, default=1.0)
@@ -29,7 +29,7 @@ def parse_args():
     parser.add_argument('--save_dir', type=str, default='saved_weights/linemod/cat')
     # parser.add_argument('--load_dir', type=str, default='saved_weights/linemod/cat/checkpoints/0.02/499')
     parser.add_argument('--load_dir', type=str, default=None)
-    parser.add_argument('--test_every', type=int, default=10)
+    parser.add_argument('--test_every', type=int, default=1)
     parser.add_argument('--save_every', type=int, default=20)
     parser.add_argument('--num_keypoints', type=int, default=8)
     parser.add_argument('--use_keypoint', type=int, default=1, help='boolean flag indicating whether keypoints are used in pose regression')
@@ -92,6 +92,7 @@ if __name__ == '__main__':
                           test_loader,
                           args)
     for epoch in range(start_epoch, args.n_epochs):
+
         trainer.train(epoch)
         if (epoch + 1) % args.test_every == 0:
             trainer.test(epoch)

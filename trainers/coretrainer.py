@@ -65,18 +65,31 @@ class CoreTrainer(object):
             pts2d_loss_record.update(pts2d_loss.detach().cpu().numpy(), len(batch['image']))
             graph_loss_record.update(graph_loss.detach().cpu().numpy(), len(batch['image']))
             total_loss_record.update(current_loss.detach().cpu().numpy(), len(batch['image']))
-            print('Epoch: [{0}][{1}/{2}]\t'
-                  'Time: {time.val:.3f} ({time.avg:.3f})\t'
-                  'Sym: {sym.val:.4f} ({sym.avg:.4f})\t'
-                  'Mask: {mask.val:.4f} ({mask.avg:.4f})\t'
-                  'Pts: {pts.val:.4f} ({pts.avg:.4f})\t'
-                  'Graph: {graph.val:.4f} ({graph.avg:.4f})\t'
-                  'Total: {total.val:.4f} ({total.avg:.4f})'.format(epoch, i_batch, len(self.train_loader),
-                                                                    time=time_record, sym=sym_cor_loss_record,
-                                                                    mask=mask_loss_record, pts=pts2d_loss_record,
-                                                                    graph=graph_loss_record, total=total_loss_record))
+
+            if i_batch % 20 == 0:
+                print('Epoch: [{0}][{1}/{2}]\t'
+                      'Time: {time.val:.3f} ({time.avg:.3f})\t'
+                      'Sym: {sym.val:.4f} ({sym.avg:.4f})\t'
+                      'Mask: {mask.val:.4f} ({mask.avg:.4f})\t'
+                      'Pts: {pts.val:.4f} ({pts.avg:.4f})\t'
+                      'Graph: {graph.val:.4f} ({graph.avg:.4f})\t'
+                      'Total: {total.val:.4f} ({total.avg:.4f})'.format(epoch, i_batch, len(self.train_loader),
+                                                                        time=time_record, sym=sym_cor_loss_record,
+                                                                        mask=mask_loss_record, pts=pts2d_loss_record,
+                                                                        graph=graph_loss_record, total=total_loss_record))
 
     def visualize_symmetry(self, sym_cor_pred, mask_pred, sym_cor, mask, image, epoch, i_batch):
+        """
+        visualize symmetry
+        :param sym_cor_pred: 2 * 480 * 640
+        :param mask_pred: 1 * 480 * 640
+        :param sym_cor: 2 * 480 * 640 (symmetric GT)
+        :param mask: 1 * 480 * 640 (maks GT)
+        :param image: 480 * 640 * 3
+        :param epoch: epoch (500)
+        :param i_batch: batch
+        :return:
+        """
         img_dir = os.path.join(self.args.save_dir, 'image', str(self.args.lr))
         if not os.path.exists(img_dir):
             os.makedirs(img_dir)
@@ -98,7 +111,7 @@ class CoreTrainer(object):
         image_gt = image.copy()
         mask = mask.detach().cpu().numpy()[0]
         sym_cor = sym_cor.detach().cpu().numpy()
-        ys, xs = np.nonzero(mask)
+        ys, xs = np.nonzero(mask) # mask 480 * 640
         for i_pt in sample([i for i in range(len(ys))], min(100, len(ys))):
             y = int(round(ys[i_pt]))
             x = int(round(xs[i_pt]))
@@ -286,11 +299,11 @@ class CoreTrainer(object):
                                         batch['mask'][0],
                                         epoch,
                                         i_batch)
-                    self.visualize_votes(pts2d_map_pred[0],
-                                         batch['pts2d_map'][0],
-                                         batch['mask'][0],
-                                         epoch,
-                                         i_batch)
+                    # self.visualize_votes(pts2d_map_pred[0],
+                    #                      batch['pts2d_map'][0],
+                    #                      batch['mask'][0],
+                    #                      epoch,
+                    #                      i_batch)
                     try:
                         self.visualize_keypoints(pts2d_map_pred[:1],
                                                  batch['pts2d'][0],
@@ -310,8 +323,10 @@ class CoreTrainer(object):
                                          epoch,
                                          i_batch)
                 loss_record.update(current_loss.detach().cpu().numpy(), len(batch['image']))
-
+        print("="*50)
+        print("Eopch : {:d}".format(epoch))
         print('Loss: {:.4f}'.format(loss_record.avg))
+        print("=" * 50)
         return loss_record.avg
 
     def vote_keypoints(self, pts2d_map, mask):
