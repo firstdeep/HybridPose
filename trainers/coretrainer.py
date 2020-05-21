@@ -12,7 +12,7 @@ from lib.ransac_voting_gpu_layer.ransac_voting_gpu import estimate_voting_distri
 from lib.regressor.regressor import load_wrapper, get_2d_ctypes
 from src.evaluate import read_diameter
 import pdb
-
+from trainers.Visualize import vis_keypoints, vis_mask, vis_symmetry, vis_graph
 cuda = torch.cuda.is_available()
 
 class CoreTrainer(object):
@@ -150,7 +150,7 @@ class CoreTrainer(object):
             x = int(round(x))
             y = int(round(y))
             # radius=2, color=red, thickness=filled
-            image_pred = cv2.circle(image_pred, (x, y), 2, (0, 0, 255), thickness=-1)
+            image_pred = cv2.circle(image_pred, (x, y), 4, (0, 0, 255), thickness=-1)
         img_pred_name = os.path.join(img_dir, '{}_{}_pts.jpg'.format(epoch, i_batch))
         cv2.imwrite(img_pred_name, image_pred)
         # draw ground truth
@@ -161,7 +161,7 @@ class CoreTrainer(object):
             x = int(round(x))
             y = int(round(y))
             # radius=2, color=white, thickness=filled
-            image_gt = cv2.circle(image_gt, (x, y), 2, (255, 255, 255), thickness=-1)
+            image_gt = cv2.circle(image_gt, (x, y), 4, (255, 0, 0), thickness=-1)
         img_gt_name = os.path.join(img_dir, '{}_{}_pts_gt.jpg'.format(epoch, i_batch))
         cv2.imwrite(img_gt_name, image_gt)
 
@@ -511,6 +511,7 @@ class CoreTrainer(object):
     def search_para(self, regressor, predictions_para, poses_para, K_inv, normal_gt, diameter, val_set):
         para_id = 0
         for data_id in range(len(val_set['pts3d'])):
+            print("\t\tSearch_parameter for initialization and refinement sub-modules, val_data_index = {:d}".format(data_id))
             if val_set['mask_pred'][data_id].sum() == 0 or \
                     np.sum(val_set['pts2d_pred_loc'][data_id]) == 0:
                 # object not detected
@@ -519,7 +520,7 @@ class CoreTrainer(object):
             # fill intermediate predictions
             self.fill_intermediate_predictions(regressor,
                                                predictions,
-                                               K_inv,
+                                               K_inv[data_id],
                                                val_set['pts3d'][data_id],
                                                val_set['pts2d_pred_loc'][data_id],
                                                val_set['pts2d_pred_var'][data_id],
@@ -543,8 +544,9 @@ class CoreTrainer(object):
         return pr_para, pi_para
 
     def generate_data(self, val_size=20):
+        diameter = 144.5458923 / 1000.
         self.model.eval()
-        camera_intrinsic = self.test_loader.dataset.dataset.camera_intrinsic
+
         n_examples = len(self.test_loader.dataset) - val_size
         test_set = {
                 'object_name': [],
@@ -564,12 +566,10 @@ class CoreTrainer(object):
                     'sym_cor_pred' : [],
                     'mask_pred' : [],
                     'R_gt' : [],
-                    't_gt' : []
+                    't_gt' : [],
+                    'K' : []
                     }
-        K = np.matrix([[camera_intrinsic['fu'], 0, camera_intrinsic['uc']],
-                       [0, camera_intrinsic['fv'], camera_intrinsic['vc']],
-                       [0, 0, 1]], dtype=np.float32)
-        K_inv = np.linalg.inv(K)
+
         regressor = load_wrapper()
         # intermediate predictions in the test set
         predictions = regressor.new_container()
@@ -579,7 +579,9 @@ class CoreTrainer(object):
         poses_para = regressor.new_container_pose()
         with torch.no_grad():
             for i_batch, batch in enumerate(self.test_loader):
+                print("index_batch = {:d}".format(i_batch))
                 base_idx = self.args.batch_size * i_batch
+
                 if cuda:
                     batch['image'] = batch['image'].cuda()
                     batch['sym_cor'] = batch['sym_cor'].cuda()
@@ -592,12 +594,14 @@ class CoreTrainer(object):
                 mask_pred[mask_pred <= 0.5] = 0.
                 pts2d_pred_loc, pts2d_pred_var = self.vote_keypoints(pts2d_map_pred, mask_pred)
                 mask_pred = mask_pred.detach().cpu().numpy()     
-                for i in range(batch['image'].shape[0]):
-                    R = batch['R'].numpy()
-                    t = batch['t'].numpy()
 
+                for i in range(batch['image'].shape[0]):
+
+                    R = batch['R'].numpy() # batch_size * 3 * 3
+                    t = np.expand_dims(batch['t'].numpy(), axis=2) # batch size * 3 * 1
+                    k = batch['camera_intrinsic'].numpy()
                     if (base_idx + i) < val_size:
-                        # save data for parameter search                    
+                        # save data for parameter search
                         val_set['pts3d'].append(batch['pts3d'][i].numpy())
                         val_set['pts2d_pred_loc'].append(pts2d_pred_loc[i].detach().cpu().numpy())
                         val_set['pts2d_pred_var'].append(pts2d_pred_var[i].detach().cpu().numpy())
@@ -606,29 +610,66 @@ class CoreTrainer(object):
                         val_set['mask_pred'].append(mask_pred[i][0]) 
                         val_set['R_gt'].append(R[i])
                         val_set['t_gt'].append(t[i])
+                        val_set['K'].append(np.linalg.inv(np.matrix(k[i])))
                         # skip pose regression: first `val_size` examples are in the val set
                         continue
                     elif (base_idx + i) == val_size:
+                        print("==" * 55)
+                        print("Search hyper-parameters, number of val_size == {:d}".format(base_idx + i))
                         # search hyper-parameters of both initialization and refinement sub-modules
                         pr_para, pi_para = self.search_para(regressor,
                                                             predictions_para,
                                                             poses_para,
-                                                            K_inv,
+                                                            val_set['K'],
                                                             batch['normal'][i].numpy(),
-                                                            read_diameter(self.args.object_name),
+                                                            diameter,
                                                             val_set)
+                        print("1. pr_para == {:f}".format(pr_para))
+                        print("2. pi_para == {:f}".format(pi_para))
+                        print("=="*55)
                     # regress pose: test set starts from the `val_size`^{th} example
                     # save ground-truth information
-                    test_set['object_name'] += batch['object_name'][i:]
-                    test_set['local_idx'] += batch['local_idx'].numpy()[i:].tolist()
+                    test_set['object_name'] += batch['object_name'][i:i+1]
+                    test_set['local_idx'] += batch['local_idx'].numpy()[i:i+1].tolist()
                     test_set['R_gt'][base_idx + i - val_size] = R[i]
                     test_set['t_gt'][base_idx + i - val_size] = t[i]
+                    img_path = str(batch['image_name'][i:i+1])
+                    img = cv2.imread(img_path[2:-2], cv2.IMREAD_COLOR)
+
+                    # Visualization and image save
+                    vis_symmetry(sym_cor_pred[i],
+                                    mask_pred[i],
+                                    batch['sym_cor'][i],
+                                    batch['mask'][i],
+                                    img,
+                                    batch['local_idx'].numpy()[i:i+1].tolist())
+
+                    vis_mask(mask_pred[i],
+                                batch['mask'][i],
+                                batch['local_idx'].numpy()[i:i+1].tolist())
+
+                    vis_keypoints(pts2d_pred_loc[i],
+                                     batch['pts2d'][i],
+                                     img,
+                                     batch['local_idx'].numpy()[i:i+1].tolist())
+
+                    vis_graph(graph_pred[i],
+                                 batch['graph'][i],
+                                 batch['pts2d'][i],
+                                 mask_pred[i],
+                                 batch['mask'][i],
+                                 img,
+                                 batch['local_idx'].numpy()[i:i + 1].tolist())
+                    # pr_para = 93965200196320
+                    # pi_para = 93965052228560
                     # save predicted information
+                    print("*" * 30)
+                    print("prediction start")
                     R_pred, t_pred, R_init, t_init = self.regress_pose(regressor,
                                                                        predictions,
                                                                        pr_para,
                                                                        pi_para,
-                                                                       K_inv,
+                                                                       np.linalg.inv(np.matrix(k[i])),
                                                                        batch['pts3d'][i].numpy(),
                                                                        pts2d_pred_loc[i].detach().cpu().numpy(),
                                                                        pts2d_pred_var[i].detach().cpu().numpy(),
@@ -636,12 +677,16 @@ class CoreTrainer(object):
                                                                        sym_cor_pred[i].detach().cpu().numpy(),
                                                                        mask_pred[i][0],
                                                                        batch['normal'][i].numpy())
+                    print("prediction finish")
+                    pred_pose = np.concatenate([R_pred, t_pred[:, None]], axis=1)
+                    print(pred_pose)
+                    print("*"*30)
                     test_set['R_pred'][base_idx + i - val_size] = R_pred
                     test_set['t_pred'][base_idx + i - val_size] = t_pred
                     test_set['R_init'][base_idx + i - val_size] = R_init
                     test_set['t_init'][base_idx + i - val_size] = t_init
             os.makedirs('output/{}'.format(self.args.dataset), exist_ok=True)
-            np.save('output/{}/test_set_{}.npy'.format(self.args.dataset, self.args.object_name), test_set)
+            np.save('output/{}/test_set_{}_re.npy'.format(self.args.dataset, self.args.object_name), test_set)
             print('saved')
         regressor.delete_container(predictions, predictions_para, poses_para, pr_para, pi_para)
 

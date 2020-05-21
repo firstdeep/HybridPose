@@ -10,7 +10,8 @@ def get_2d_ctypes(arr2d):
             + np.arange(arr2d.shape[0]) * arr2d.strides[0]).astype(np.uintp)
 
 def load_wrapper():
-    regressor = CDLL('wrapper.so')
+    # regressor = CDLL('wrapper.so')
+    regressor = CDLL('/home/hwanglab/HybridPose/lib/regressor/wrapper.so')
     # specify argument and return value types
     # https://stackoverflow.com/questions/22425921/pass-a-2d-numpy-array-to-c-using-ctypes
     c_2darr_p = ndpointer(dtype=np.uintp, ndim=1, flags='C')

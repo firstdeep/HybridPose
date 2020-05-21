@@ -25,7 +25,6 @@ class LinemodDataset(Dataset):
                             [0, 0, 1]], dtype=np.float32)
         ##################################################################################
         # TODO image shape edit 필요. --> 나중에 crop and resize 시 문제발생원인.
-        # keypoints를 이용한 graph를 그릴 때 문제 발생
         self.img_shape = (400, 400)  # (h, w)
         ##################################################################################
         self.base_dir = base_dir
@@ -80,7 +79,8 @@ class LinemodDataset(Dataset):
             # symmetry plane normals
             normal_name = os.path.join(self.base_dir, object_name, 'symmetries.txt')
             self.normals[object_name] = self.read_normal(normal_name)
-            print("-> Data init finish")
+            print("Data init finish")
+            print("keep going...\n")
 
     def read_3d_points(self, filename):
         with open(filename) as f:
@@ -208,9 +208,6 @@ class LinemodDataset(Dataset):
                 pts2d_map = self.keypoints_to_map(mask.numpy(), pts2d)
                 # graph
                 graph = self.keypoints_to_graph(mask.numpy(), pts2d)
-
-                # camera intrinsic
-                K = np.array(self.info[local_idx]['cam_K'], dtype=np.float32).reshape(3, 3)
                 return {
                     'object_name': object_name,
                     'local_idx': local_idx,
@@ -224,8 +221,7 @@ class LinemodDataset(Dataset):
                     'sym_cor': sym_cor,
                     'normal': normal,
                     'mask': mask,
-                    'graph': graph,
-                    'camera_intrinsic': K
+                    'graph': graph
                 }
             else:
                 local_idx -= self.lengths[object_name]

@@ -18,7 +18,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
     # training
     parser.add_argument('--batch_size', type=int, default=8)
-    parser.add_argument('--n_epochs', type=int, default=600)
+    parser.add_argument('--n_epochs', type=int, default=550)
     parser.add_argument('--lr', type=float, default=0.02)
     parser.add_argument('--lambda_sym_cor', type=float, default=0.1)
     parser.add_argument('--lambda_mask', type=float, default=1.0)
@@ -27,14 +27,33 @@ def parse_args():
     parser.add_argument('--object_name', type=str, default='tless_09')
     parser.add_argument('--dataset', type=str, default='linemod', choices=['linemod', 'occlusion_linemod'])
     parser.add_argument('--save_dir', type=str, default='saved_weights/linemod/tless_09')
-    # parser.add_argument('--load_dir', type=str, default=None)
-    parser.add_argument('--test_every', type=int, default=1)
-    parser.add_argument('--save_every', type=int, default=1)
+    parser.add_argument('--load_dir', type=str, default='saved_weights/linemod/tless_09/checkpoints/0.02/549')
+    parser.add_argument('--test_every', type=int, default=10)
+    parser.add_argument('--save_every', type=int, default=10)
     parser.add_argument('--num_keypoints', type=int, default=8)
     parser.add_argument('--use_keypoint', type=int, default=1, help='boolean flag indicating whether keypoints are used in pose regression')
     parser.add_argument('--use_edge', type=int, default=1, help='boolean flag indicating whether edge are used in pose regression')
     parser.add_argument('--use_symmetry', type=int, default=1, help='boolean flag indicating whether symmetry are used in pose regression')
     args = parser.parse_args()
+
+    # parser.add_argument('--batch_size', type=int, default=8)
+    # parser.add_argument('--n_epochs', type=int, default=500)
+    # parser.add_argument('--lr', type=float, default=0.02)
+    # parser.add_argument('--lambda_sym_cor', type=float, default=0.1)
+    # parser.add_argument('--lambda_mask', type=float, default=1.0)
+    # parser.add_argument('--lambda_pts2d', type=float, default=10.0)
+    # parser.add_argument('--lambda_graph', type=float, default=0.1)
+    # parser.add_argument('--object_name', type=str, default='cat')
+    # parser.add_argument('--dataset', type=str, default='linemod', choices=['linemod', 'occlusion_linemod'])
+    # parser.add_argument('--save_dir', type=str, default='saved_weights/linemod/cat')
+    # parser.add_argument('--load_dir', type=str, default='saved_weights/linemod/cat/checkpoints/0.02/499')
+    # parser.add_argument('--test_every', type=int, default=10)
+    # parser.add_argument('--save_every', type=int, default=10)
+    # parser.add_argument('--num_keypoints', type=int, default=8)
+    # parser.add_argument('--use_keypoint', type=int, default=1, help='boolean flag indicating whether keypoints are used in pose regression')
+    # parser.add_argument('--use_edge', type=int, default=1, help='boolean flag indicating whether edge are used in pose regression')
+    # parser.add_argument('--use_symmetry', type=int, default=1, help='boolean flag indicating whether symmetry are used in pose regression')
+    # args = parser.parse_args()
     return args
 
 def initialize(args):
@@ -69,7 +88,10 @@ def setup_model(args):
         model = nn.DataParallel(model).cuda()
     print("number of model parameters:", sum([np.prod(p.size()) for p in model.parameters()]))
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    start_epoch = 0
+    if args.load_dir is not None:
+        model, optimizer, start_epoch = load_session(model, optimizer, args)
+    else:
+        start_epoch = 0
     return model, optimizer, start_epoch
 
 def adjust_lr(optimizer, lr):
@@ -78,6 +100,7 @@ def adjust_lr(optimizer, lr):
 
 # main function
 if __name__ == '__main__':
+    torch.cuda.set_device(0)
     args = parse_args()
     initialize(args)
     train_loader, test_loader = setup_loaders(args)
@@ -88,9 +111,7 @@ if __name__ == '__main__':
                           test_loader,
                           args)
     for epoch in range(start_epoch, args.n_epochs):
-        ###################
-        # trainer.test(epoch)
-        ###################
+        print("Train in")
         trainer.train(epoch)
 
         if (epoch + 1) % args.save_every == 0:
@@ -105,4 +126,5 @@ if __name__ == '__main__':
         if epoch == 200:
             adjust_lr(optimizer, args.lr / 10)
 
-    # trainer.generate_data()
+    print("\n-> Start data generation")
+    trainer.generate_data()
