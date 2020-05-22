@@ -545,8 +545,8 @@ class CoreTrainer(object):
         return pr_para, pi_para
 
     ####################################################################################################################
-    def generate_data(self, val_size=20, ):
-        model_path = "/home/hwanglab/HybridPose/data/tless/tless_09/mesh.ply"
+    def generate_data(self, val_size=20, dataset=""):
+        model_path = "./data/tless/"+dataset+"/mesh.ply"
         model_cloud = inout.load_ply(model_path)
         diameter = 144.5458923 / 1000.
         self.model.eval()

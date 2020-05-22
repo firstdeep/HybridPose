@@ -127,4 +127,4 @@ if __name__ == '__main__':
             adjust_lr(optimizer, args.lr / 10)
 
     print("\n-> Start data generation")
-    trainer.generate_data()
+    trainer.generate_data(dataset=args.object_name)
