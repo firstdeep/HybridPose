@@ -12,8 +12,9 @@ from lib.ransac_voting_gpu_layer.ransac_voting_gpu import estimate_voting_distri
 from lib.regressor.regressor import load_wrapper, get_2d_ctypes
 from src.evaluate import read_diameter
 import pdb
-from trainers.Visualize import vis_keypoints, vis_mask, vis_symmetry, vis_graph
+from trainers.Visualize import vis_keypoints, vis_mask, vis_symmetry, vis_graph, vis_2D_projection, vis_2D_projection_init
 cuda = torch.cuda.is_available()
+from vsd import inout
 
 class CoreTrainer(object):
     def __init__(self, model, optimizer, train_loader, test_loader, args):
@@ -543,7 +544,10 @@ class CoreTrainer(object):
         pr_para = regressor.search_pose_refine(predictions_para, poses_para, para_id, diameter)
         return pr_para, pi_para
 
-    def generate_data(self, val_size=20):
+    ####################################################################################################################
+    def generate_data(self, val_size=20, ):
+        model_path = "/home/hwanglab/HybridPose/data/tless/tless_09/mesh.ply"
+        model_cloud = inout.load_ply(model_path)
         diameter = 144.5458923 / 1000.
         self.model.eval()
 
@@ -664,7 +668,7 @@ class CoreTrainer(object):
                     # pi_para = 93965052228560
                     # save predicted information
                     print("*" * 30)
-                    print("prediction start")
+                    print("Start of pose prediction")
                     R_pred, t_pred, R_init, t_init = self.regress_pose(regressor,
                                                                        predictions,
                                                                        pr_para,
@@ -677,9 +681,10 @@ class CoreTrainer(object):
                                                                        sym_cor_pred[i].detach().cpu().numpy(),
                                                                        mask_pred[i][0],
                                                                        batch['normal'][i].numpy())
-                    print("prediction finish")
-                    pred_pose = np.concatenate([R_pred, t_pred[:, None]], axis=1)
-                    print(pred_pose)
+                    #2D projection
+                    vis_2D_projection(model_cloud, img, k[i], R_pred, t_pred*1000, batch['local_idx'].numpy()[i:i+1].tolist())
+                    vis_2D_projection_init(model_cloud, img, k[i], R_init, t_init*1000, batch['local_idx'].numpy()[i:i+1].tolist())
+                    print("Finish of pose prediction")
                     print("*"*30)
                     test_set['R_pred'][base_idx + i - val_size] = R_pred
                     test_set['t_pred'][base_idx + i - val_size] = t_pred
@@ -689,6 +694,7 @@ class CoreTrainer(object):
             np.save('output/{}/test_set_{}_re.npy'.format(self.args.dataset, self.args.object_name), test_set)
             print('saved')
         regressor.delete_container(predictions, predictions_para, poses_para, pr_para, pi_para)
+    ####################################################################################################################
 
     def save_model(self, epoch):
         ckpt_dir = os.path.join(self.args.save_dir, 'checkpoints')

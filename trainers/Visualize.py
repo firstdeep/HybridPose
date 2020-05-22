@@ -2,7 +2,7 @@ import numpy as np
 import os
 import cv2
 from random import sample
-
+from pytless import renderer
 
 
 def vis_symmetry(sym_cor_pred, mask_pred, sym_cor, mask, image, i_batch):
@@ -132,4 +132,36 @@ def vis_graph(graph_pred, graph_gt, pts2d_gt, mask_pred, mask_gt, image, i_batch
     img_pred_name = os.path.join(img_dir, '{}_graph_pred.jpg'.format(str(i_batch[0])))
     cv2.imwrite(img_pred_name, image_pred)
 
+def vis_2D_projection(model, img, K, R, t, i_batch):
+    img_dir = os.path.join("/home/hwanglab/HybridPose/test_output", 'img_2D_projection')
+    if not os.path.exists(img_dir):
+        os.makedirs(img_dir)
+    im_size = (img.shape[1], img.shape[0])
+    vis_rgb = np.zeros(img.shape, np.float)
+    surf_color = (0, 0, 255)
+    ren_rgb = renderer.render(model, im_size, K, R, t,
+                              surf_color=surf_color, mode='rgb')
 
+    vis_rgb += 0.7 * ren_rgb.astype(np.float)
+    vis_rgb = 0.6 * img + 0.4 * vis_rgb
+    vis_rgb[vis_rgb > 255] = 255
+    vis_rgb = vis_rgb.astype(np.uint8)
+
+    cv2.imwrite(os.path.join(img_dir, '{}_2D_projection.jpg'.format(str(i_batch[0]))), vis_rgb)
+
+def vis_2D_projection_init(model, img, K, R, t, i_batch):
+    img_dir = os.path.join("/home/hwanglab/HybridPose/test_output", 'img_2D_projection')
+    if not os.path.exists(img_dir):
+        os.makedirs(img_dir)
+    im_size = (img.shape[1], img.shape[0])
+    vis_rgb = np.zeros(img.shape, np.float)
+    surf_color = (255, 0, 0)
+    ren_rgb = renderer.render(model, im_size, K, R, t,
+                              surf_color=surf_color, mode='rgb')
+
+    vis_rgb += 0.7 * ren_rgb.astype(np.float)
+    vis_rgb = 0.6 * img + 0.4 * vis_rgb
+    vis_rgb[vis_rgb > 255] = 255
+    vis_rgb = vis_rgb.astype(np.uint8)
+
+    cv2.imwrite(os.path.join(img_dir, '{}_2D_projection_init.jpg'.format(str(i_batch[0]))), vis_rgb)
